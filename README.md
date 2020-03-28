@@ -6,8 +6,8 @@ Idle Clicker game
 
 ### How to Play
 
-Download zip.
+1. Download zip.
 
-Open `index.html` in the browser.
+2. Open `index.html` in the browser.
 
-That's it!
+3. That's it!
