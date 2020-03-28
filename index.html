@@ -1,0 +1,139 @@
+<!DOCTYPE html> 
+<html> 
+  <head> 
+    <meta charset="utf-8" /> 
+    <title>CodeMonkeyClicker</title>
+  </head>
+  <body>
+    <div id="bs-console">
+    </div>
+    <script src="./biwascheme.js">
+      
+      (define tickets 0)
+      (define tickets-per-second 0.0)
+      (define clock (js-eval "Date.now()"))
+      (define clicker-button 
+        (element-new 
+          (list 
+            "div#clicker" 
+            (list 
+              "button" 
+              "Click!!"))))
+
+      (add-handler! clicker-button "click" (lambda (e)
+        (set! tickets (+ tickets 1))
+        (re-draw)))
+      
+      (define bodyDiv (getelem "body"))
+      (define ticketsDiv (element-new (list "div#ticketsCount")))
+      (define ticketsPsDiv (element-new (list "div#ticketsPs")))
+      
+      (define (element-append-children! elem kids)
+        (for-each 
+          (lambda (e) 
+            (element-append-child! elem e)) 
+          kids))
+      
+      (define (format-tickets)
+        (format "Tickets: ~a" tickets))
+      
+      (define (format-tickets-per-second)
+        (format "per second: ~a" tickets-per-second))
+      
+      (define (round-off z n)
+        (let ((power (expt 10 n)))
+          (/ (round (* power z)) power)))
+      
+      (define (initialize)
+        (element-append-children! bodyDiv 
+          (list
+            ticketsDiv 
+            ticketsPsDiv
+            clicker-button
+            itemsDiv))
+        (re-draw))
+
+      (define (re-draw)
+        (element-update! ticketsDiv (format-tickets))
+        (element-update! ticketsPsDiv (format-tickets-per-second)))
+
+      (define (update)
+        (let ([dt (- (js-eval "Date.now()") clock)])
+          (set! tickets (round-off (+ tickets (* (/ dt 1000) tickets-per-second)) 1))
+          (set! clock (js-eval "Date.now()"))
+          (re-draw)))
+
+      (define items-table
+        (let ([h (make-eqv-hashtable)])
+          (hashtable-set! h "Luke" (list 20 0.2))
+          (hashtable-set! h "My" (list 100 1))
+          (hashtable-set! h "Ethan" (list 1000 5))
+          h))
+
+      (define (increase-price item)
+        (let ([cost-pair (hashtable-ref items-table item (list))])
+          (hashtable-set! 
+            items-table 
+            item 
+            (list 
+              (round (* 1.1 (car cost-pair)))
+              (cadr cost-pair)))))
+      
+      (define (format-item-text item)
+        (let ([cost-pair (hashtable-ref items-table item (list))])
+          (define cost (car cost-pair))
+          (define tps (cadr cost-pair))
+          (format "~a \~ cost: ~a ~\ tps: ~a" item cost tps)))
+
+      (define (format-item-li item)
+        (list 
+          (format "li#~a" item) 
+          (format-item-text item)))
+
+      (define itemsDiv
+        (element-new 
+          (list "div#items"
+            (append
+              (list "ul")
+              (vector->list
+                (vector-map
+                  format-item-li
+                  (hashtable-keys items-table)))))))
+      
+      (define (buy-item item)
+        (let ([cost-pair (hashtable-ref items-table item (list))])
+          (define cost (car cost-pair))
+          (define tps (cadr cost-pair))
+          (set! tickets (- tickets cost))
+          (set! tickets-per-second (+ tickets-per-second tps))))
+  
+      (define (re-draw-price item)
+        (element-update! 
+          (getelem (format "#~a" item)) (format-item-text item)))
+      
+      (define (is-affordable? item)
+        (>= tickets (car (hashtable-ref items-table item 0))))
+      
+      (define (initialize-item-handlers)
+        (for-each
+          (lambda (i)
+            (add-handler! 
+              (format "#~a" i)
+              "click" 
+              (lambda () 
+                (when (is-affordable? i)
+                    (buy-item i)
+                    (increase-price i)
+                    (re-draw-price i)
+                    (re-draw)))))
+          (vector->list 
+            (hashtable-keys items-table))))
+
+      (initialize)
+      (initialize-item-handlers)
+
+      (set-timer! update 1)
+
+    </script>
+  </body>
+</html>
