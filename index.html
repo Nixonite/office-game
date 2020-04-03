@@ -3,6 +3,32 @@
   <head> 
     <meta charset="utf-8" /> 
     <title>CodeMonkeyClicker</title>
+    <link href="https://fonts.googleapis.com/css?family=Coming+Soon&display=swap" rel="stylesheet">
+
+    <style>
+
+      body {
+        margin: 0 auto;
+        width: 800px;
+        font-family: 'Coming Soon', cursive;
+      }
+
+      #ticketsCount {
+        font-size: 30px;
+      }
+      #ticketsPs {
+        font-size: 15px;
+      }
+
+      button {
+        height: 50px;
+        width: 50px;
+        border-radius: 50%;
+        border: 1px solid red;
+        outline: none;
+        font-family: 'Coming Soon', cursive;
+      }
+    </style>
   </head>
   <body>
     <div id="bs-console">
@@ -10,15 +36,15 @@
     <script src="./biwascheme.js">
       
       (define tickets 0)
-      (define tickets-per-second 0.0)
+      (define tickets-per-second 0)
       (define clock (js-eval "Date.now()"))
       (define clicker-button 
         (element-new 
           (list 
-            "div#clicker" 
+            "div#clicker"
             (list 
               "button" 
-              "Click!!"))))
+              "CLICK"))))
 
       (add-handler! clicker-button "click" (lambda (e)
         (set! tickets (+ tickets 1))
@@ -27,49 +53,52 @@
       (define bodyDiv (getelem "body"))
       (define ticketsDiv (element-new (list "div#ticketsCount")))
       (define ticketsPsDiv (element-new (list "div#ticketsPs")))
+      (define itemsDiv (element-new (list "div#items")))
       
       (define (element-append-children! elem kids)
         (for-each 
-          (lambda (e) 
+          (lambda (e)
             (element-append-child! elem e)) 
           kids))
       
+      (define (take-until l e)
+        (if (or (null? l) (eqv? (car l) e))
+          l
+          (take-until (cdr l) e)))
+      
+      (define (take-after l e)
+        (let ([newl (take-until l e)])
+          (if (null? (cdr newl))
+            (list)
+            (cadr newl))))
+      
       (define (format-tickets)
-        (format "Tickets: ~a" tickets))
+        (format "Tickets: ~a" (round-off tickets 1)))
       
       (define (format-tickets-per-second)
-        (format "per second: ~a" tickets-per-second))
+        (format "per second: ~a" (round-off tickets-per-second 1)))
       
       (define (round-off z n)
-        (let ((power (expt 10 n)))
+        (let ([power (expt 10 n)])
           (/ (round (* power z)) power)))
-      
-      (define (initialize)
-        (element-append-children! bodyDiv 
-          (list
-            ticketsDiv 
-            ticketsPsDiv
-            clicker-button
-            itemsDiv))
-        (re-draw))
-
-      (define (re-draw)
-        (element-update! ticketsDiv (format-tickets))
-        (element-update! ticketsPsDiv (format-tickets-per-second)))
-
-      (define (update)
-        (let ([dt (- (js-eval "Date.now()") clock)])
-          (set! tickets (round-off (+ tickets (* (/ dt 1000) tickets-per-second)) 1))
-          (set! clock (js-eval "Date.now()"))
-          (re-draw)))
 
       (define items-table
         (let ([h (make-eqv-hashtable)])
-          (hashtable-set! h "Luke" (list 20 0.2))
-          (hashtable-set! h "My" (list 100 1))
-          (hashtable-set! h "Ethan" (list 1000 5))
+          (hashtable-set! h "Luke" (list 20 0.2 #t))
+          (hashtable-set! h "My" (list 100 1 #f))
+          (hashtable-set! h "Ethan" (list 1000 5 #f))
           h))
 
+      (define (is-affordable? item)
+        (>= tickets (car (hashtable-ref items-table item 0))))
+      
+      (define (item-is-visible? item)
+        (let ([h (hashtable-ref items-table item (list))])
+          (caddr h)))
+      
+      (define (item-is-locked? item)
+        (not (item-is-visible? item)))
+      
       (define (increase-price item)
         (let ([cost-pair (hashtable-ref items-table item (list))])
           (hashtable-set! 
@@ -78,27 +107,29 @@
             (list 
               (round (* 1.1 (car cost-pair)))
               (cadr cost-pair)))))
+
+      (define (filter-visible-items-only items-list)
+        (filter 
+          (lambda (i)
+            (caddr (hashtable-ref items-table i #t)))
+          items-list))
       
-      (define (format-item-text item)
-        (let ([cost-pair (hashtable-ref items-table item (list))])
-          (define cost (car cost-pair))
-          (define tps (cadr cost-pair))
-          (format "~a \~ cost: ~a ~\ tps: ~a" item cost tps)))
-
-      (define (format-item-li item)
-        (list 
-          (format "li#~a" item) 
-          (format-item-text item)))
-
-      (define itemsDiv
-        (element-new 
-          (list "div#items"
-            (append
-              (list "ul")
-              (vector->list
-                (vector-map
-                  format-item-li
-                  (hashtable-keys items-table)))))))
+      (define (set-item-visible item)
+        (let ([attrs (hashtable-ref items-table item (list))])
+          (hashtable-set! 
+            items-table 
+            item 
+            (list (car attrs) (cadr attrs) #t))))
+      
+      ; not using this anywhere yet
+      (define (draw-itemsList)
+        (append
+          (list "ul#items-list")
+            (map
+              (lambda (i) (format "~a" i))
+              (filter-visible-items-only
+                (vector->list 
+                  (hashtable-keys items-table))))))
       
       (define (buy-item item)
         (let ([cost-pair (hashtable-ref items-table item (list))])
@@ -106,34 +137,70 @@
           (define tps (cadr cost-pair))
           (set! tickets (- tickets cost))
           (set! tickets-per-second (+ tickets-per-second tps))))
-  
-      (define (re-draw-price item)
-        (element-update! 
-          (getelem (format "#~a" item)) (format-item-text item)))
+
+      (define (unlock-next-if-exists)
+        (define all-keys (vector->list (hashtable-keys items-table)))
+        (define locked-keys (filter item-is-locked? all-keys))
+        (unless (null? locked-keys)
+          (set-item-visible (car locked-keys))))
       
-      (define (is-affordable? item)
-        (>= tickets (car (hashtable-ref items-table item 0))))
+      (define (click-item item)
+        (when (is-affordable? item)
+          (buy-item item)
+          (increase-price item)))
       
-      (define (initialize-item-handlers)
-        (for-each
-          (lambda (i)
-            (add-handler! 
-              (format "#~a" i)
-              "click" 
-              (lambda () 
-                (when (is-affordable? i)
-                    (buy-item i)
-                    (increase-price i)
-                    (re-draw-price i)
-                    (re-draw)))))
-          (vector->list 
-            (hashtable-keys items-table))))
+      (define (create-li item)
+        (let ([cost-pair (hashtable-ref items-table item (list))])
+          (define cost (car cost-pair))
+          (define tps (cadr cost-pair))
+          (define li-text (format "~a \~ cost: ~a ~\ tps: ~a" item cost tps))
+          (element-new (list (format "li#~a" item) li-text))))
+      
+      (define (add-item-to-itemsDiv item)
+        (element-append-child! (getelem "#items") (create-li item))
+        (add-handler! (format "#~a" item) "click" (lambda () (click-item item))))
+        
+      ; this is a potentially expensive operation to handle every frame
+      ; so we delegate it to handler events only (except for initialization)
+      (define (redraw-items-list)
+        (let ([ul (element-new (list "ul#items-list"))])
+          (for-each
+            (lambda (e)
+              (element-append-child! ul (create-li e)))
+            (filter-visible-items-only (vector->list (hashtable-keys items-table))))
+          (element-replace! (getelem "#items-list") ul)))
+
+      (define (initialize)
+        (element-append-children! bodyDiv 
+          (list
+            ticketsDiv 
+            ticketsPsDiv
+            clicker-button
+            (element-new (list "ul#items-list"))))
+        (redraw-items-list)
+        (re-draw))
+
+      (define (re-draw)
+        (element-update! ticketsDiv (format-tickets))
+        (element-update! ticketsPsDiv (format-tickets-per-second)))
+      
+      (define (update-tickets-and-clock)
+        (let ([dt (- (js-eval "Date.now()") clock)])
+          (set! tickets (+ tickets (* (/ dt 1000) tickets-per-second)))
+          (set! clock (js-eval "Date.now()"))))
+
+      (define (update)
+        (update-tickets-and-clock)
+        (re-draw))
 
       (initialize)
-      (initialize-item-handlers)
 
+
+      
+      
       (set-timer! update 1)
 
+      
     </script>
   </body>
 </html>
